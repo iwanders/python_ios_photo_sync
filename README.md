@@ -1,4 +1,4 @@
-# iOS photo sync
+# Python iOS photo sync
 
 Python scripts to sync an (non jailbroken) iPhone's photos to a linux (or windows / mac) computer
 without iTunes or iCloud. This runs a server on the phone using [Pythonista][pythonista], then the
@@ -46,7 +46,7 @@ Default file structure is:
 This can be modified with commandline arguments.
 
 ## Development
-Use the [`socketserverREPL`](socketserverREPL) functionality, start that on the phone and use
+Use the `socketserverREPL` functionality, start that on the phone and use
 [`run_phone.sh`](run_phone.sh). After closing the connection from the REPL, be sure to load the
 `http://<iphone_hostname>.local:1338` a few times to ensure the connection is refused before running
 this script again to deploy and run the latest.
