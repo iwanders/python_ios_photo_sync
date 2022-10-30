@@ -172,12 +172,15 @@ class PhotoService:
         return a
 
 
-
-
 class ReuseableDoxXMLServer(DocXMLRPCServer):
     def server_bind(self):
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind(self.server_address)
+
+def disable_idle():
+    from objc_util import on_main_thread
+    import console
+    on_main_thread(console.set_idle_timer_disabled)(True);
 
 def start():
     with ReuseableDoxXMLServer(("0.0.0.0", 1338), allow_none=True) as server:
@@ -193,5 +196,5 @@ def start():
             print("\nKeyboard interrupt received, exiting.")
 
 if __name__ == "__main__":
+    disable_idle()
     start()
-
