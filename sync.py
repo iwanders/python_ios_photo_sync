@@ -19,7 +19,7 @@ class Phone:
         
         
 
-class Sync:
+class Storage:
     def __init__(self, dir, path, metadata_path):
         self.dir = dir
         self.path = path
@@ -99,7 +99,7 @@ class Sync:
 
 def run_sync(args):
     p = Phone(args.host)
-    sync = Sync(dir=args.dir, path=args.path, metadata_path=args.metadata_path)
+    sync = Storage(dir=args.dir, path=args.path, metadata_path=args.metadata_path)
     on_phone = p.get_all_metadata()
     print(f"On phone: {len(on_phone)}")
     to_sync = sync.files_to_sync(on_phone)
@@ -126,7 +126,7 @@ def run_test(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Retrieval")
 
-    parser.add_argument("--host", default="http://hummingbird.local:1338", help="xmlrpc interface to connect to.")
+    parser.add_argument("--host", default="http://$REPL_HOST:1338", help="xmlrpc interface to connect to. Defaults to %(default)s")
     subparsers = parser.add_subparsers(dest="command")
 
     test_parser = subparsers.add_parser('test')
@@ -139,6 +139,9 @@ if __name__ == "__main__":
     sync_parser.set_defaults(func=run_sync)
 
     args = parser.parse_args()
+
+    if "REPL_HOST" in os.environ:
+        args.host = args.host.replace("$REPL_HOST", os.environ["REPL_HOST"])
 
     # no command
     if (args.command is None):
