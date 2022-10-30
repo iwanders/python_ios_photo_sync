@@ -1,0 +1,3 @@
+[submodule "socketserverREPL"]
+	path = socketserverREPL
+	url = git@github.com:iwanders/socketserverREPL.git
