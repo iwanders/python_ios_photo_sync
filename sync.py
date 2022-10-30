@@ -97,9 +97,6 @@ class Sync:
 
         return retrieved
 
-
-
-
 def run_sync(args):
     p = Phone(args.host)
     sync = Sync(dir=args.dir, path=args.path, metadata_path=args.metadata_path)
@@ -112,7 +109,8 @@ def run_sync(args):
         retrieved = sync.retrieve(p, asset)
         filename = retrieved["filename"]
         size = retrieved["_filesize"]
-        print(f"{i: >5} / {total: >5}: {filename} ({size})")
+        date =  datetime.datetime.utcfromtimestamp(retrieved["creation_date"]).strftime('%Y-%m-%d %H:%M:%S')
+        print(f"{i+1: >5} / {total: >5}: {filename: >20} {date} ({size: >9} bytes)")
 
 def run_test(args):
     p = Phone(args.host)
