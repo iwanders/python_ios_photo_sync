@@ -12,7 +12,7 @@ deletion yet either.
 
 ## Usage
 
-Push [`phone.py`](phone.py) to your phone. Run that in Pythonista 3.
+Copy [`phone.py`](phone.py) to your phone. Run that in Pythonista 3.
 
 Then on the PC it's easiest set the following environment variable to the hostname of your phone;
 ```
@@ -50,6 +50,10 @@ Use the `socketserverREPL` functionality, start that on the phone and use
 [`run_phone.sh`](run_phone.sh). After closing the connection from the REPL, be sure to load the
 `http://<iphone_hostname>.local:1338` a few times to ensure the connection is refused before running
 this script again to deploy and run the latest.
+
+Easiest way to bootstrap this is to run `python3 -m http.server` on your PC, open the
+`socketserverREPL.py` script in the browser on your phone, copy all the text, then paste this into
+a new script in Pythonista, then run that.
 
 
 [pythonista]: http://omz-software.com/pythonista/
