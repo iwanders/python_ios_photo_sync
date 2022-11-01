@@ -66,7 +66,7 @@ class PhotoService:
                 return
 
         print(to_delete)
-        self.p.batch_delete([to_delete[1]])
+        self.p.batch_delete(to_delete)
 
     @staticmethod
     def _asset_filename(a):
