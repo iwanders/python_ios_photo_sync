@@ -4,9 +4,6 @@ Python scripts to sync an (non jailbroken) iPhone's photos to a linux (or window
 without iTunes or iCloud. This runs a server on the phone using [Pythonista][pythonista], then the
 computer communicates to this server to obtain the photos.
 
-This is a rewrite from my original version, as such, it is alpha quality. Doesn't support bulk
-deletion yet either.
-
 > **Warning**
 > Only run any of this on a network you completely trust. There is no authentication or encryption.
 
@@ -35,15 +32,25 @@ Default file structure is:
 ```
 /tmp/my_photo_storage/$ tree
 .
-├── 2017-02
-│   ├── 022D9E6D-D313-428A-B41D-2D3961BA2C39.JPG
-│   ├── 11D78EF4-E98D-4B64-90E4-697C854148D9.JPG
-│   └── metadata
-│       ├── 022D9E6D-D313-428A-B41D-2D3961BA2C39.json
-│       └── 11D78EF4-E98D-4B64-90E4-697C854148D9.json
+└── 2022-10
+    ├── IMG_0018.HEIC
+    ├── IMG_0019.PNG
+    └── metadata
+        ├── IMG_0018.json
+        └── IMG_0019.json
 ```
 
 This can be modified with commandline arguments.
+
+The deletion of old photos can be ran with:
+```
+./sync.py delete --dir "/tmp/my_photo_storage/"
+```
+
+The phone will only delete photos if the request contains the full metadata and the correct md5 of
+the photo. So the sync script has to prove to the phone script it has the metadata and photo
+available.
+
 
 ## Development
 Use the `socketserverREPL` functionality, start that on the phone and use
