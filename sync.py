@@ -6,18 +6,17 @@ import os
 import json
 
 import datetime
+import time
 from pathlib import Path
 
 class Phone:
     def __init__(self, url):
         self.url = url
-        self.client = xmlrpc.client.ServerProxy(url)
+        self.client = xmlrpc.client.ServerProxy(url, allow_none=True)
 
     def __getattr__(self, name):
         if hasattr(self.client, name):
             return getattr(self.client, name)
-        
-        
 
 class Storage:
     def __init__(self, dir, path, metadata_path):
@@ -60,6 +59,28 @@ class Storage:
                 continue
             # nothing to do!
         return to_sync
+
+    def load_from_disk(self, asset):
+        path_to_metadata = self.get_metadata_path(asset)
+        with open(path_to_metadata) as f:
+            data = json.load(f)
+
+        # We got the metadata, now add the filesize and md5sum.
+        get_path = self.get_path(asset)
+        # Read it back to obtain the md5.
+        with open(get_path, "rb") as f:
+            z = f.read()
+
+        # calculate the hash.
+        import hashlib
+        m = hashlib.md5()
+        m.update(z)
+        h = m.hexdigest()
+
+        data["_filesize"] = len(z)
+        data["_md5"] = h
+        return data
+        
 
     def retrieve(self, p, asset):
         get_path = self.get_path(asset)
@@ -123,6 +144,54 @@ def run_test(args):
     r = p.client.retrieve_asset_by_local_id(d[-1]["local_id"])
     print(r)
 
+def run_delete(args):
+    p = Phone(args.host)
+    sync = Storage(dir=args.dir, path=args.path, metadata_path=args.metadata_path)
+
+    # Obtain whatever we have on the phone.
+    on_phone = p.get_all_metadata()
+
+    # Obtain all asset collections.
+    asset_collections = p.client.get_asset_collections()
+
+    # We're only interested in manually created albums.
+    manual_albums = asset_collections["albums"]
+
+    # Collect all photos that are part of a manual album, they are always preserved.
+    keep_photos = set()
+    for album in manual_albums:
+        for asset in album["assets"]:
+            keep_photos.add(asset["local_id"])
+
+    to_prune = []
+    # Next, we can iterate through the photos on the phone, check against expiry.
+    now = time.time()
+    for asset in on_phone:
+        # print(asset)
+        staleness = now - asset["modification_date"]
+        # print(staleness)
+        if staleness >= args.retain_duration:
+            # print("  is too old")
+            # if asset["local_id"] in keep_photos:
+                # print(f"   Preserving {asset['local_id']}  {asset['filename']} because in keep.")
+            if asset["local_id"] not in keep_photos:
+                # print(f"  {asset['filename']} marking for deletion")
+                to_prune.append(asset)
+
+    # Ok, now that we have a list of to-be-pruned entries, we have to prove to the phone that we got
+    # the photo and metadata.
+
+    to_prune_proof = []
+    for asset in to_prune:
+        to_prune_proof.append(sync.load_from_disk(asset))
+
+    # Now that we have assembled our proof, we can _finally_ tell the phone to remove these entries.
+    print(to_prune_proof)
+
+    p.delete_assets_by_metadata(to_prune_proof)
+    
+    
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Retrieval")
 
@@ -132,11 +201,42 @@ if __name__ == "__main__":
     test_parser = subparsers.add_parser('test')
     test_parser.set_defaults(func=run_test)
 
+    def add_storage_args(parse):
+        parse.add_argument("--dir", default="/tmp/storage", help="Directory to write output to.")
+        parse.add_argument("--path", default="{Y_create}-{m_create}/{filename}", help="Format to use when writing.")
+        parse.add_argument("--metadata-path", default="{Y_create}-{m_create}/metadata/{filename}",
+                           help="Format to use when writing metadata, extension is replaced with .json.")
+
     sync_parser = subparsers.add_parser('sync')
-    sync_parser.add_argument("--dir", default="/tmp/storage", help="Directory to write output to.")
-    sync_parser.add_argument("--path", default="{Y_create}-{m_create}/{filename}", help="Format to use when writing.")
-    sync_parser.add_argument("--metadata-path", default="{Y_create}-{m_create}/metadata/{filename}", help="Format to use when writing metadata, extension is replaced with .json.")
+    add_storage_args(sync_parser)
     sync_parser.set_defaults(func=run_sync)
+
+    def sane_date_parser(v):
+        day = 60 * 60 * 24
+        week = 7 * day
+        month = 31 * day
+
+        scaling = day
+        value = float('inf')
+
+        if v.endswith("d"):
+            value = float(v[0:-1])
+            scaling = day
+        elif v.endswith("m"):
+            value = float(v[0:-1])
+            scaling = month
+        elif v.endswith("w"):
+            value = float(v[0:-1])
+            scaling = week
+        else:
+            raise BaseException("Date should end with 'd' for days, 'w' for weeks, 'm' for months")
+
+        return scaling * value
+
+    delete_parser = subparsers.add_parser('delete', help="Remove files older than given duration and not in a manually created album.")
+    add_storage_args(delete_parser)
+    delete_parser.add_argument("--retain-duration", default="30d", type=sane_date_parser, help="Duration to keep. Default: %(default)s, d=day, w=week, m=month")
+    delete_parser.set_defaults(func=run_delete)
 
     args = parser.parse_args()
 

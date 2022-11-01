@@ -47,6 +47,26 @@ class PhotoService:
                         }
         return assetcollections
 
+    def delete_assets_by_metadata(self, list_of_asset_metadata):
+        """
+            Remove list of assets. Metadata provides strong guarantees that the asset was correctly
+            transfered.
+        """
+        to_delete = []
+
+        for metadata in list_of_asset_metadata:
+            local_id = metadata["local_id"]
+            on_phone_metadata = self.retrieve_asset_by_local_id(local_id)
+            # Discard the data key.
+            del on_phone_metadata["_data"]
+            if on_phone_metadata == metadata:
+                to_delete.append(self.p.get_asset_with_local_id(local_id))
+            else:
+                print("Something is not matching, bailing!")
+                return
+
+        print(to_delete)
+        self.p.batch_delete([to_delete[1]])
 
     @staticmethod
     def _asset_filename(a):
@@ -184,8 +204,8 @@ def disable_idle():
 
 def start():
     with ReuseableDoxXMLServer(("0.0.0.0", 1338), allow_none=True) as server:
-        server.set_server_title("Photo retrieval server")
-        server.set_server_name("Photo retrieval server")
+        server.set_server_title("Photo management server")
+        server.set_server_name("Photo management server")
 
         server.register_instance(PhotoService(), allow_dotted_names=True)
         #server.register_multicall_functions()
