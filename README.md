@@ -18,7 +18,7 @@ export REPL_HOST=<iphone_hostname>.local
 
 After that one can run:
 ```
-./sync.py sync --dir "/tmp/my_photo_storage/"
+./sync.py -v sync --dir "/tmp/my_photo_storage/"
 ```
 
 Syncing looks like:
@@ -44,7 +44,7 @@ This can be modified with commandline arguments.
 
 The deletion of old photos can be ran with:
 ```
-./sync.py delete --dir "/tmp/my_photo_storage/"
+./sync.py -v delete --dir "/tmp/my_photo_storage/"
 ```
 
 The phone will only delete photos if the request contains the full metadata and the correct md5 of
