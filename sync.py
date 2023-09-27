@@ -19,9 +19,9 @@ class Phone:
         self.url = url
         self.client = xmlrpc.client.ServerProxy(url, allow_none=True)
 
-    def __getattr__(self, name):
+    def __getattr__(self, name, **kwargs):
         if hasattr(self.client, name):
-            return getattr(self.client, name)
+            return getattr(self.client, name, **kwargs)
 
 class Storage:
     def __init__(self, dir, path, metadata_path):
@@ -231,7 +231,7 @@ def run_delete(args):
     # print(to_prune_proof)
 
     logger.info(f'Issuing deletion, phone will check proof and prompt.')
-    p.delete_assets_by_metadata(to_prune_proof)
+    p.delete_assets_by_metadata(to_prune_proof, args.ignore_integrity)
     logger.info(f'Done.')
     
     
@@ -282,6 +282,7 @@ if __name__ == "__main__":
     delete_parser = subparsers.add_parser('delete', help="Remove files older than given duration and not in a manually created album.")
     add_storage_args(delete_parser)
     delete_parser.add_argument("--retain-duration", default="30d", type=sane_date_parser, help="Duration to keep. Default: %(default)s, d=day, w=week, m=month")
+    delete_parser.add_argument("--ignore-integrity", default=False, action="store_true", help="Skip the integrity check.")
     delete_parser.set_defaults(func=run_delete)
 
     args = parser.parse_args()

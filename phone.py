@@ -47,7 +47,7 @@ class PhotoService:
                         }
         return assetcollections
 
-    def delete_assets_by_metadata(self, list_of_asset_metadata):
+    def delete_assets_by_metadata(self, list_of_asset_metadata, ignore_integrity=False):
         """
             Remove list of assets. Metadata provides strong guarantees that the asset was correctly
             transfered.
@@ -62,8 +62,15 @@ class PhotoService:
             if on_phone_metadata == metadata:
                 to_delete.append(self.p.get_asset_with_local_id(local_id))
             else:
-                print("Something is not matching, bailing!")
-                return
+                print("Something is not matching:")
+                print("   Metadata Phone: {}".format(on_phone_metadata))
+                print("   Metadata Local: {}".format(metadata))
+                if ignore_integrity:
+                    print("Deleting regardless, as integrity check passed.");
+                    to_delete.append(self.p.get_asset_with_local_id(local_id))
+                else:
+                    print("Integrity check required to pass, aborting.")
+                    return
 
         print(to_delete)
         self.p.batch_delete(to_delete)
@@ -77,6 +84,7 @@ class PhotoService:
     def _get_data(asset):
         if (asset.media_type == "image"):
             image_b = asset.get_image_data(original=True)
+            print(image_b.uti)
             image_bytes = image_b.getvalue()
         if (asset.media_type == "video"):
             image_b = PhotoService._get_video_data(asset)
@@ -192,7 +200,7 @@ class PhotoService:
         return a
 
 
-class ReuseableDoxXMLServer(DocXMLRPCServer):
+class ReuseableDocXMLServer(DocXMLRPCServer):
     def server_bind(self):
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind(self.server_address)
@@ -203,7 +211,7 @@ def disable_idle():
     on_main_thread(console.set_idle_timer_disabled)(True);
 
 def start():
-    with ReuseableDoxXMLServer(("0.0.0.0", 1338), allow_none=True) as server:
+    with ReuseableDocXMLServer(("0.0.0.0", 1338), allow_none=True) as server:
         server.set_server_title("Photo management server")
         server.set_server_name("Photo management server")
 
