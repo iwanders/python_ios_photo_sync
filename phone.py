@@ -130,6 +130,54 @@ class PhotoService:
             return fp.read()
 
 
+    @staticmethod
+    def _get_image_data(asset):
+        # adapted from get_video_data
+        # https://forum.omz-software.com/topic/3299/get-filenames-for-photos-from-camera-roll/18
+        # https://gist.github.com/jsbain/de01d929d3477a4c8e7ae9517d5b3d70
+        import objc_util
+        from objc_util import ObjCInstance, ObjCClass, ObjCBlock, c_void_p
+        assets = [asset]
+        options = ObjCClass('PHImageRequestOptions').new()
+        options.version = 1	#PHVideoRequestOptionsVersionOriginal, use 0 for edited versions.
+        image_manager = ObjCClass('PHImageManager').defaultManager()
+
+        handled_assets = []
+
+        def handleAsset(_obj,asset, audioMix, info):
+            A = ObjCInstance(asset)
+            '''I am just appending to handled_assets to process later'''
+            handled_assets.append(A)
+            '''
+            # alternatively, handle inside handleAsset.  maybe need a threading.Lock here to ensure you are not sending storbinaries in parallel
+            with open(str(A.resolvedURL().resourceSpecifier()),'rb') as fp:
+                fro.storbinary(......)
+            '''
+            
+        handlerblock=ObjCBlock(handleAsset, argtypes=[c_void_p,]*4)
+
+        for A in assets:
+            z = A
+            del z["_data"]
+            print(z)
+            # https://developer.apple.com/documentation/photokit/phimagemanager/1616964-requestimageforasset?language=objc'
+            targetSize = objc_util.CGSize();
+            targetSize.width = A["pixel_width"]
+            targetSize.height = A["pixel_height"]
+            # contentMode = ObjCClass('PHImageContentModeDefault').new();
+            contentMode = None;
+            print(image_manager.__dir__())
+            image_manager.requestImageForAsset_targetSize_contentMode_options_resultHandler_(A, targetSiz=targetSize,contentMode=contentMode,
+                                options=options, 
+                                resultHandler=handlerblock)
+                                
+        while len(handled_assets) < len(assets):
+            time.sleep(0.1)
+
+        A = handled_assets[0]
+        with open(str(A.resolvedURL().resourceSpecifier()),'rb') as fp:
+            return fp.read()
+
     def retrieve_asset_by_local_id(self, local_id):
         """
             Function to retrieve an asset by its local id, with full metdata and the extra keys:
@@ -222,6 +270,16 @@ def start():
             server.serve_forever()
         except KeyboardInterrupt:
             print("\nKeyboard interrupt received, exiting.")
+
+def test_image_data():
+    p = PhotoService()
+    entries = p.get_all_metadata()
+    a_photo = [x for x in entries if x["media_type"] == "image"][-1]
+    
+    a = p.retrieve_asset_by_local_id(a_photo["local_id"])
+    d = p._get_image_data(a)
+    # print(a)
+
 
 if __name__ == "__main__":
     disable_idle()
