@@ -83,9 +83,10 @@ class PhotoService:
     @staticmethod
     def _get_data(asset):
         if (asset.media_type == "image"):
-            image_b = asset.get_image_data(original=True)
-            print(image_b.uti)
-            image_bytes = image_b.getvalue()
+            # image_b = asset.get_image_data(original=True)
+            # print(image_b.uti)
+            # image_bytes = image_b.getvalue()
+            return PhotoService._get_image_data(asset)
         if (asset.media_type == "video"):
             image_b = PhotoService._get_video_data(asset)
             image_bytes = image_b
@@ -137,53 +138,39 @@ class PhotoService:
         # https://gist.github.com/jsbain/de01d929d3477a4c8e7ae9517d5b3d70
         import objc_util
         from objc_util import ObjCInstance, ObjCClass, ObjCBlock, c_void_p
+        import ctypes
         assets = [asset]
         options = ObjCClass('PHImageRequestOptions').new()
         options.PHImageRequestOptionsDeliveryMode = 1 # high quality
-        options.version = 0	#PHVideoRequestOptionsVersionOriginal, use 0 for edited versions.
+        options.version = 0
         options.synchronous = True
         image_manager = ObjCClass('PHImageManager').defaultManager()
 
         handled_assets = []
 
-        def handleAsset(_obj,result, info):
-            print("in handler");
+        def handleAsset(_obj, result, info):
+            # result here holds the thing we actually want.
             A = ObjCInstance(result)
-            '''I am just appending to handled_assets to process later'''
             handled_assets.append(A)
-            '''
-            # alternatively, handle inside handleAsset.  maybe need a threading.Lock here to ensure you are not sending storbinaries in parallel
-            with open(str(A.resolvedURL().resourceSpecifier()),'rb') as fp:
-                fro.storbinary(......)
-            '''
-            
+
         handlerblock=ObjCBlock(handleAsset, argtypes=[c_void_p,]*3)
 
         for A in assets:
-
-            # https://developer.apple.com/documentation/photokit/phimagemanager/1616964-requestimageforasset?language=objc'
-            targetSize = objc_util.CGSize();
-            targetSize.width = asset.pixel_width
-            targetSize.height = asset.pixel_height
-            # contentMode = ObjCClass('PHImageContentModeDefault').new();
-            contentMode = 1;
-            print(image_manager.__dir__())
-            image_manager.requestImageForAsset(A, targetSize=targetSize,contentMode=contentMode,
-                                options=options, 
+            # https://developer.apple.com/documentation/photokit/phimagemanager/3237282-requestimagedataandorientationfo?language=objc
+            image_manager.requestImageDataAndOrientationForAsset(A,options=options, 
                                 resultHandler=handlerblock)
-            print("got here!");
                                 
         while len(handled_assets) < len(assets):
-            print(".");
+            # print(".");
             time.sleep(0.1)
 
-        A = handled_assets[0]
-        print("doing things here");
-        print(dir(A))
-        print(str(A))
-        # return b""
-        # with open(str(A.resolvedURL().resourceSpecifier()),'rb') as fp:
-            # return fp.read()
+        # Now we have some clunky bytes object that makes up a pointer and a length, retrieve the
+        # heic data.
+        retrieved_data = handled_assets[0]
+        ptr = retrieved_data.bytes()
+        data = ctypes.POINTER(ctypes.c_char).from_buffer(ptr)[:retrieved_data.length()]
+
+        return data
 
     def retrieve_asset_by_local_id(self, local_id):
         """
