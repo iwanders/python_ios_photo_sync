@@ -139,13 +139,16 @@ class PhotoService:
         from objc_util import ObjCInstance, ObjCClass, ObjCBlock, c_void_p
         assets = [asset]
         options = ObjCClass('PHImageRequestOptions').new()
-        options.version = 1	#PHVideoRequestOptionsVersionOriginal, use 0 for edited versions.
+        options.PHImageRequestOptionsDeliveryMode = 1 # high quality
+        options.version = 0	#PHVideoRequestOptionsVersionOriginal, use 0 for edited versions.
+        options.synchronous = True
         image_manager = ObjCClass('PHImageManager').defaultManager()
 
         handled_assets = []
 
-        def handleAsset(_obj,asset, audioMix, info):
-            A = ObjCInstance(asset)
+        def handleAsset(_obj,result, info):
+            print("in handler");
+            A = ObjCInstance(result)
             '''I am just appending to handled_assets to process later'''
             handled_assets.append(A)
             '''
@@ -154,29 +157,33 @@ class PhotoService:
                 fro.storbinary(......)
             '''
             
-        handlerblock=ObjCBlock(handleAsset, argtypes=[c_void_p,]*4)
+        handlerblock=ObjCBlock(handleAsset, argtypes=[c_void_p,]*3)
 
         for A in assets:
-            z = A
-            del z["_data"]
-            print(z)
+
             # https://developer.apple.com/documentation/photokit/phimagemanager/1616964-requestimageforasset?language=objc'
             targetSize = objc_util.CGSize();
-            targetSize.width = A["pixel_width"]
-            targetSize.height = A["pixel_height"]
+            targetSize.width = asset.pixel_width
+            targetSize.height = asset.pixel_height
             # contentMode = ObjCClass('PHImageContentModeDefault').new();
-            contentMode = None;
+            contentMode = 1;
             print(image_manager.__dir__())
-            image_manager.requestImageForAsset_targetSize_contentMode_options_resultHandler_(A, targetSiz=targetSize,contentMode=contentMode,
+            image_manager.requestImageForAsset(A, targetSize=targetSize,contentMode=contentMode,
                                 options=options, 
                                 resultHandler=handlerblock)
+            print("got here!");
                                 
         while len(handled_assets) < len(assets):
+            print(".");
             time.sleep(0.1)
 
         A = handled_assets[0]
-        with open(str(A.resolvedURL().resourceSpecifier()),'rb') as fp:
-            return fp.read()
+        print("doing things here");
+        print(dir(A))
+        print(str(A))
+        # return b""
+        # with open(str(A.resolvedURL().resourceSpecifier()),'rb') as fp:
+            # return fp.read()
 
     def retrieve_asset_by_local_id(self, local_id):
         """
@@ -276,9 +283,9 @@ def test_image_data():
     entries = p.get_all_metadata()
     a_photo = [x for x in entries if x["media_type"] == "image"][-1]
     
-    a = p.retrieve_asset_by_local_id(a_photo["local_id"])
+    a = p.p.get_asset_with_local_id(a_photo["local_id"])
     d = p._get_image_data(a)
-    # print(a)
+    print("yes, all done")
 
 
 if __name__ == "__main__":
