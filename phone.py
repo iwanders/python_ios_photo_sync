@@ -127,7 +127,7 @@ class PhotoService:
             time.sleep(0.1)
 
         A = handled_assets[0]
-        with open(str(A.resolvedURL().resourceSpecifier()),'rb') as fp:
+        with open(str(A.resolvedURL().fileSystemRepresentation(), 'ascii'),'rb') as fp:
             return fp.read()
 
 
