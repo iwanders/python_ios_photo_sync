@@ -239,7 +239,7 @@ def run_delete(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Retrieval")
     parser.add_argument('-v', '--verbosity', action="count", help="Increase verbosity," 
-                        "nothing is warn/error only, -v is info, -vv is debug.")
+                        "nothing is warn/error only, -v is info, -vv is debug.", default=0)
 
     parser.add_argument("--host", default="http://$REPL_HOST:1338", help="xmlrpc interface to connect to. Defaults to %(default)s")
     subparsers = parser.add_subparsers(dest="command")
@@ -288,9 +288,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     logger.setLevel(logging.WARN)
-    if args.verbosity == 2:
-        logger.setLevel(logging.DEBUG)
     if args.verbosity == 1:
+        logger.setLevel(logging.DEBUG)
+    if args.verbosity == 0:
         logger.setLevel(logging.INFO)
 
     ch = logging.StreamHandler()
@@ -302,6 +302,8 @@ if __name__ == "__main__":
 
     if "REPL_HOST" in os.environ:
         args.host = args.host.replace("$REPL_HOST", os.environ["REPL_HOST"])
+    else:
+        logger.warning("no REPL_HOST set, you probably want to set this or pass --host to set the hostname")
 
     # no command
     if (args.command is None):
