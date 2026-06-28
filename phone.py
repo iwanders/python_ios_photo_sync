@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 import datetime
-from xmlrpc.server import DocXMLRPCServer
 import socket
-
 import time
-
+from xmlrpc.server import DocXMLRPCServer
 
 from objc_util import ObjCInstance
+
+
 class PhotoService:
     """
-        Class to expose the photos module through an xml rpc interface.
+    Class to expose the photos module through an xml rpc interface.
     """
+
     def __init__(self):
         # Use a local instance instance of photos in case we ever want to hook methods.
         import photos
+
         self.p = photos
         """
         # This wasn't too useful, can't marshall the types.
@@ -25,7 +27,7 @@ class PhotoService:
 
     def get_all_metadata(self):
         """
-            Retrieve all metadata of all images and videos.
+        Retrieve all metadata of all images and videos.
         """
         all_assets = self.p.get_assets(media_type="image")
         all_assets.extend(list(self.p.get_assets(media_type="video")))
@@ -34,23 +36,27 @@ class PhotoService:
 
     def get_asset_collections(self):
         """
-            Get all asset collections.
+        Get all asset collections.
         """
         assetcollections = {
-                            "albums": self._make_serializable(self.p.get_albums()),
-                            "smart_albums": self._make_serializable(self.p.get_smart_albums()),
-                            "moments": self._make_serializable(self.p.get_moments()),
-                            "favorites_album": self._make_serializable(self.p.get_favorites_album()),
-                            "recently_added_album": self._make_serializable(self.p.get_recently_added_album()),
-                            "selfies_album": self._make_serializable(self.p.get_selfies_album()),
-                            "screenshots_album": self._make_serializable(self.p.get_screenshots_album()),
-                        }
+            "albums": self._make_serializable(self.p.get_albums()),
+            "smart_albums": self._make_serializable(self.p.get_smart_albums()),
+            "moments": self._make_serializable(self.p.get_moments()),
+            "favorites_album": self._make_serializable(self.p.get_favorites_album()),
+            "recently_added_album": self._make_serializable(
+                self.p.get_recently_added_album()
+            ),
+            "selfies_album": self._make_serializable(self.p.get_selfies_album()),
+            "screenshots_album": self._make_serializable(
+                self.p.get_screenshots_album()
+            ),
+        }
         return assetcollections
 
     def delete_assets_by_metadata(self, list_of_asset_metadata, ignore_integrity=False):
         """
-            Remove list of assets. Metadata provides strong guarantees that the asset was correctly
-            transfered.
+        Remove list of assets. Metadata provides strong guarantees that the asset was correctly
+        transfered.
         """
         to_delete = []
 
@@ -66,7 +72,7 @@ class PhotoService:
                 print("   Metadata Phone: {}".format(on_phone_metadata))
                 print("   Metadata Local: {}".format(metadata))
                 if ignore_integrity:
-                    print("Deleting regardless, as integrity check passed.");
+                    print("Deleting regardless, as integrity check passed.")
                     to_delete.append(self.p.get_asset_with_local_id(local_id))
                 else:
                     print("Integrity check required to pass, aborting.")
@@ -79,72 +85,81 @@ class PhotoService:
     def _asset_filename(a):
         return str(ObjCInstance(a).filename())
 
-
     @staticmethod
     def _get_data(asset):
-        if (asset.media_type == "image"):
+        if asset.media_type == "image":
             # image_b = asset.get_image_data(original=True)
             # print(image_b.uti)
             # image_bytes = image_b.getvalue()
             return PhotoService._get_image_data(asset)
-        if (asset.media_type == "video"):
+        if asset.media_type == "video":
             image_b = PhotoService._get_video_data(asset)
             image_bytes = image_b
         return image_bytes
-
 
     @staticmethod
     def _get_video_data(asset):
         # https://forum.omz-software.com/topic/3299/get-filenames-for-photos-from-camera-roll/18
         # https://gist.github.com/jsbain/de01d929d3477a4c8e7ae9517d5b3d70
-        from objc_util import ObjCInstance, ObjCClass, ObjCBlock, c_void_p
+        from objc_util import ObjCBlock, ObjCClass, ObjCInstance, c_void_p
+
         assets = [asset]
-        options = ObjCClass('PHVideoRequestOptions').new()
-        options.version = 1	#PHVideoRequestOptionsVersionOriginal, use 0 for edited versions.
-        image_manager = ObjCClass('PHImageManager').defaultManager()
+        options = ObjCClass("PHVideoRequestOptions").new()
+        options.version = (
+            1  # PHVideoRequestOptionsVersionOriginal, use 0 for edited versions.
+        )
+        image_manager = ObjCClass("PHImageManager").defaultManager()
 
         handled_assets = []
 
-        def handleAsset(_obj,asset, audioMix, info):
+        def handleAsset(_obj, asset, audioMix, info):
             A = ObjCInstance(asset)
-            '''I am just appending to handled_assets to process later'''
+            """I am just appending to handled_assets to process later"""
             handled_assets.append(A)
-            '''
+            """
             # alternatively, handle inside handleAsset.  maybe need a threading.Lock here to ensure you are not sending storbinaries in parallel
             with open(str(A.resolvedURL().resourceSpecifier()),'rb') as fp:
                 fro.storbinary(......)
-            '''
-            
-        handlerblock=ObjCBlock(handleAsset, argtypes=[c_void_p,]*4)
+            """
+
+        handlerblock = ObjCBlock(
+            handleAsset,
+            argtypes=[
+                c_void_p,
+            ]
+            * 4,
+        )
 
         for A in assets:
-            #these are PHAssets
-            image_manager.requestAVAssetForVideo(A, 
-                                options=options, 
-                                resultHandler=handlerblock)
-                                
+            # these are PHAssets
+            image_manager.requestAVAssetForVideo(
+                A, options=options, resultHandler=handlerblock
+            )
+
         while len(handled_assets) < len(assets):
             time.sleep(0.1)
 
         A = handled_assets[0]
-        with open(str(A.resolvedURL().fileSystemRepresentation(), 'ascii'),'rb') as fp:
+        with open(str(A.resolvedURL().fileSystemRepresentation(), "ascii"), "rb") as fp:
             return fp.read()
-
 
     @staticmethod
     def _get_image_data(asset):
+        print("_get_image_data arg", asset)
         # adapted from get_video_data
         # https://forum.omz-software.com/topic/3299/get-filenames-for-photos-from-camera-roll/18
         # https://gist.github.com/jsbain/de01d929d3477a4c8e7ae9517d5b3d70
-        import objc_util
-        from objc_util import ObjCInstance, ObjCClass, ObjCBlock, c_void_p
         import ctypes
+
+        import objc_util
+        from objc_util import ObjCBlock, ObjCClass, ObjCInstance, c_void_p
+
         assets = [asset]
-        options = ObjCClass('PHImageRequestOptions').new()
-        options.PHImageRequestOptionsDeliveryMode = 1 # high quality
+        options = ObjCClass("PHImageRequestOptions").new()
+        options.PHImageRequestOptionsDeliveryMode = 1  # high quality
         options.version = 0
         options.synchronous = True
-        image_manager = ObjCClass('PHImageManager').defaultManager()
+        image_manager = ObjCClass("PHImageManager").defaultManager()
 
         handled_assets = []
 
@@ -153,13 +168,20 @@ class PhotoService:
             A = ObjCInstance(result)
             handled_assets.append(A)
 
-        handlerblock=ObjCBlock(handleAsset, argtypes=[c_void_p,]*3)
+        handlerblock = ObjCBlock(
+            handleAsset,
+            argtypes=[
+                c_void_p,
+            ]
+            * 3,
+        )
 
         for A in assets:
             # https://developer.apple.com/documentation/photokit/phimagemanager/3237282-requestimagedataandorientationfo?language=objc
-            image_manager.requestImageDataAndOrientationForAsset(A,options=options, 
-                                resultHandler=handlerblock)
-                                
+            image_manager.requestImageDataAndOrientationForAsset(
+                A, options=options, resultHandler=handlerblock
+            )
+
         while len(handled_assets) < len(assets):
             # print(".");
             time.sleep(0.1)
@@ -168,16 +190,16 @@ class PhotoService:
         # heic data.
         retrieved_data = handled_assets[0]
         ptr = retrieved_data.bytes()
-        data = ctypes.POINTER(ctypes.c_char).from_buffer(ptr)[:retrieved_data.length()]
+        data = ctypes.POINTER(ctypes.c_char).from_buffer(ptr)[: retrieved_data.length()]
 
         return data
 
     def retrieve_asset_by_local_id(self, local_id):
         """
-            Function to retrieve an asset by its local id, with full metdata and the extra keys:
-            - _filesize the number of bytes making up the file
-            - _data The data of this file.
-            - _md5 The md5 sum of this file.
+        Function to retrieve an asset by its local id, with full metdata and the extra keys:
+        - _filesize the number of bytes making up the file
+        - _data The data of this file.
+        - _md5 The md5 sum of this file.
         """
         asset = self.p.get_asset_with_local_id(local_id)
 
@@ -185,42 +207,86 @@ class PhotoService:
         image_bytes = self._get_data(asset)
         asset_dict["_filesize"] = len(image_bytes)
         asset_dict["_data"] = image_bytes
-        
+
         import hashlib
+
         m = hashlib.md5()
         m.update(image_bytes)
         asset_dict["_md5"] = m.hexdigest()
 
         return asset_dict
 
+    def retrieve_phasset_by_local_id(self, local_id):
+        """
+        Returns a PHAsset pointer, or a None
+        """
+        # Next, try to fetch the asset using its global id.
+        from objc_util import ObjCBlock, ObjCClass, ObjCInstance, c_void_p
+
+        options = ObjCClass("PHFetchOptions").new()
+        rawclass = ObjCClass("PHAsset")
+
+        r = rawclass.fetchAssetsWithLocalIdentifiers_options_([local_id], options)
+
+        for i in range(r.count()):
+            as_phasset = r.objectAtIndex(i)
+            return as_phasset
+
+    def retrieve_burst_assets_by_local_id(self, local_id):
+        """
+        Returns a list of PHAsset pointers of the burst assets that are underneath this local id.
+        These can be passed to _get_image_data
+        """
+        from objc_util import ObjCBlock, ObjCClass, ObjCInstance, c_void_p
+
+        ph_asset_for_localid = self.retrieve_phasset_by_local_id(local_id)
+        if ph_asset_for_localid is None:
+            return []
+
+        rawclass = ObjCClass("PHAsset")
+        options = ObjCClass("PHFetchOptions").new()
+        options.includeAllBurstAssets = True
+        burst_id = ph_asset_for_localid.burstIdentifier()
+        r = rawclass.fetchAssetsWithBurstIdentifier_options_(burst_id, options)
+
+        res = []
+
+        for i in range(r.count()):
+            burst_photo_as_phasset = r.objectAtIndex(i)
+            res.append(burst_photo_as_phasset)
+        return res
 
     def _make_serializable(self, a):
         """
-            This function can convert any photos' data type into a dictionary
-            of usefulness.
+        This function can convert any photos' data type into a dictionary
+        of usefulness.
         """
-        ASSETCOLLECTION_DATA_KEYS = ("local_id",
-                                     "assets",
-                                     "title",
-                                     "type",
-                                     "subtype",
-                                     "start_date",
-                                     "end_date")
-        ASSET_DATA_KEYS = ("local_id",
-                           "pixel_width",
-                           "pixel_height",
-                           "media_type",
-                           "media_subtypes",
-                           "creation_date",
-                           "modification_date",
-                           "hidden",
-                           "favorite",
-                           "duration",
-                           "location")
+        ASSETCOLLECTION_DATA_KEYS = (
+            "local_id",
+            "assets",
+            "title",
+            "type",
+            "subtype",
+            "start_date",
+            "end_date",
+        )
+        ASSET_DATA_KEYS = (
+            "local_id",
+            "pixel_width",
+            "pixel_height",
+            "media_type",
+            "media_subtypes",
+            "creation_date",
+            "modification_date",
+            "hidden",
+            "favorite",
+            "duration",
+            "location",
+        )
         if isinstance(a, list):
             z = [self._make_serializable(b) for b in a]
             return z
-            
+
         if isinstance(a, self.p.AssetCollection):
             z = {}
             for k in ASSETCOLLECTION_DATA_KEYS:
@@ -233,7 +299,6 @@ class PhotoService:
                 z[k] = self._make_serializable(getattr(a, k))
             z["filename"] = PhotoService._asset_filename(a)
             return z
-            
 
         if isinstance(a, datetime.datetime):
             return time.mktime(a.timetuple())
@@ -247,10 +312,13 @@ class ReuseableDocXMLServer(DocXMLRPCServer):
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind(self.server_address)
 
+
 def disable_idle():
-    from objc_util import on_main_thread
     import console
-    on_main_thread(console.set_idle_timer_disabled)(True);
+    from objc_util import on_main_thread
+
+    on_main_thread(console.set_idle_timer_disabled)(True)
+
 
 def start():
     with ReuseableDocXMLServer(("0.0.0.0", 1338), allow_none=True) as server:
@@ -258,21 +326,78 @@ def start():
         server.set_server_name("Photo management server")
 
         server.register_instance(PhotoService(), allow_dotted_names=True)
-        #server.register_multicall_functions()
-        print('Serving XML-RPC on localhost port 1338')
+        # server.register_multicall_functions()
+        print("Serving XML-RPC on localhost port 1338")
         try:
             server.serve_forever()
         except KeyboardInterrupt:
             print("\nKeyboard interrupt received, exiting.")
 
+
 def test_image_data():
     p = PhotoService()
     entries = p.get_all_metadata()
-    a_photo = [x for x in entries if x["media_type"] == "image"][-1]
-    
-    a = p.p.get_asset_with_local_id(a_photo["local_id"])
+    a_photo = [x for x in entries if x["media_type"] == "image"]
+    desired = a_photo[-1]
+    for z in a_photo:
+        if z["filename"].startswith("IMG_6474"):
+            desired = z
+
+    a = p.p.get_asset_with_local_id(desired["local_id"])
+    print(desired)
+    print(a)
     d = p._get_image_data(a)
     print("yes, all done")
+
+    # Next, try to fetch the asset using its global id.
+    from objc_util import ObjCBlock, ObjCClass, ObjCInstance, c_void_p
+
+    asset = ObjCClass("PHAsset").new().init()
+    options = ObjCClass("PHFetchOptions").new()
+    options.includeAllBurstAssets = True
+    print(options)
+    # print("\n".join(sorted(dir(asset))))
+    print("just phasset")
+    # print("\n".join(sorted(dir(ObjCClass("PHAsset")))))
+    rawclass = ObjCClass("PHAsset")
+
+    r = rawclass.fetchAssetsWithLocalIdentifiers_options_(
+        [desired["local_id"]], options
+    )
+
+    burst_id = None
+    print(r.count())
+    for i in range(r.count()):
+        as_phasset = r.objectAtIndex(i)
+        print(as_phasset.burstIdentifier())
+        print(as_phasset.representsBurst())
+        burst_id = as_phasset.burstIdentifier()
+
+    # Now, how do we retrieve the images from a burst identifier? >_<
+    if burst_id is None:
+        return
+
+    rawclass = ObjCClass("PHAsset")
+    options = ObjCClass("PHFetchOptions").new()
+    options.includeAllBurstAssets = True
+
+    r = rawclass.fetchAssetsWithBurstIdentifier_options_(burst_id, options)
+    print(r.count())
+    for i in range(r.count()):
+        as_phasset = r.objectAtIndex(i)
+        print(as_phasset)
+        d = p._get_image_data(as_phasset)
+        print(len(d))
+        local_id = str(as_phasset.localIdentifier())
+        print(local_id)
+        print(type(local_id))
+        # bah, that needs a burst id :/
+        # as_local_asset = p.p.get_asset_with_local_id(local_id)
+        # print(as_local_asset)
+        # print(as_phasset.burstSelectionTypes())
+
+    burstres = p.retrieve_burst_assets_by_local_id(desired["local_id"])
+    print(burstres)
 
 
 if __name__ == "__main__":
