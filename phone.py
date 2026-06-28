@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import datetime
+import re
 import socket
 import time
 from xmlrpc.server import DocXMLRPCServer
@@ -25,14 +26,38 @@ class PhotoService:
             setattr(self, z, getattr(photos, z))
         """
 
-    def get_all_metadata(self):
+    def get_all_metadata_worker(self, include_burst=False):
         """
         Retrieve all metadata of all images and videos.
         """
-        all_assets = self.p.get_assets(media_type="image")
-        all_assets.extend(list(self.p.get_assets(media_type="video")))
-        flat = [self._make_serializable(z) for z in all_assets]
-        return flat
+        all_assets = []
+        image_assets = self.p.get_assets(media_type="image")
+        for image_asset in image_assets:
+            serializable = self._make_serializable(image_asset)
+            all_assets.append(serializable)
+
+            if include_burst:
+                burst_photos_for_asset = self.retrieve_burst_assets_by_local_id(
+                    image_asset.local_id
+                )
+                for bi, burst_photo in enumerate(burst_photos_for_asset):
+                    burst_serializable = self._make_serializable(
+                        burst_photo, burst_index=bi
+                    )
+                    burst_serializable["location"] = serializable["location"]
+                    all_assets.append(burst_serializable)
+        for video in list(self.p.get_assets(media_type="video")):
+            video = self._make_serializable(video)
+
+            all_assets.append(video)
+
+        return all_assets
+
+    def get_all_metadata(self):
+        return self.get_all_metadata_worker(include_burst=False)
+
+    def get_all_metadata_with_burst(self):
+        return self.get_all_metadata_worker(include_burst=True)
 
     def get_asset_collections(self):
         """
@@ -216,6 +241,38 @@ class PhotoService:
 
         return asset_dict
 
+    def retrieve_asset_by_local_id_or_burst(self, flat_asset):
+        try:
+            return self.retrieve_asset_by_local_id(flat_asset["local_id"])
+        except ValueError as e:
+            if not "burst_id" in flat_asset:
+                raise ValueError(
+                    "local id lookup failed, and no burst_id present in asset: ",
+                    str(flat_asset),
+                )
+
+        from objc_util import ObjCBlock, ObjCClass, ObjCInstance, c_void_p
+
+        # Retrieve all entries in this burst id.
+        entries = self.retrieve_burst_assets_by_burst_id(flat_asset["burst_id"])
+
+        # That got us a list of PHAsset pointers.
+        for bi, asset in enumerate(entries):
+            asset_dict = self._make_serializable(asset, burst_index=bi)
+            if asset_dict["local_id"] == flat_asset["local_id"]:
+                # yay, this is the one we are interested in!
+                image_bytes = PhotoService._get_image_data(asset)
+                asset_dict["_filesize"] = len(image_bytes)
+                asset_dict["_data"] = image_bytes
+                import hashlib
+
+                m = hashlib.md5()
+                m.update(image_bytes)
+                asset_dict["_md5"] = m.hexdigest()
+
+                return asset_dict
+        raise ValueError("Failed to find asset from burst for ", str(flat_asset))
+
     def retrieve_phasset_by_local_id(self, local_id):
         """
         Returns a PHAsset pointer, or a None
@@ -247,6 +304,14 @@ class PhotoService:
         options = ObjCClass("PHFetchOptions").new()
         options.includeAllBurstAssets = True
         burst_id = ph_asset_for_localid.burstIdentifier()
+        return self.retrieve_burst_assets_by_burst_id(burst_id)
+
+    def retrieve_burst_assets_by_burst_id(self, burst_id):
+        from objc_util import ObjCBlock, ObjCClass, ObjCInstance, c_void_p
+
+        rawclass = ObjCClass("PHAsset")
+        options = ObjCClass("PHFetchOptions").new()
+        options.includeAllBurstAssets = True
         r = rawclass.fetchAssetsWithBurstIdentifier_options_(burst_id, options)
 
         res = []
@@ -256,7 +321,7 @@ class PhotoService:
             res.append(burst_photo_as_phasset)
         return res
 
-    def _make_serializable(self, a):
+    def _make_serializable(self, a, burst_index=None):
         """
         This function can convert any photos' data type into a dictionary
         of usefulness.
@@ -300,6 +365,91 @@ class PhotoService:
             z["filename"] = PhotoService._asset_filename(a)
             return z
 
+        if (
+            hasattr(a, "_get_objc_classname")
+            and a._get_objc_classname() == b"__NSTaggedDate"
+        ):
+            interval = a.timeIntervalSince1970()
+            return float(interval)
+
+        if hasattr(a, "_get_objc_classname") and a._get_objc_classname() == b"PHAsset":
+            from objc_util import (
+                ObjCBlock,
+                ObjCClass,
+                ObjCInstance,
+                c_void_p,
+                create_objc_class,
+            )
+
+            """
+            {'local_id': 'ADsdfsdfsdfAB0/L0/001', 
+            'pixel_width': 3024, 'pixel_height': 4032, 'media_type': 'image', 
+            'media_subtypes': [], 'creation_date': x.0, 'modification_date': x.0, 'hidden': False, 
+            'favorite': False, 'duration': 0.0, 'location': {'longitude': -x.x, 'latitude': x.x, 'altitude': x.x}, 
+            'filename': 'IMG_6474.JPG'}
+            """
+            z = {}
+            z["local_id"] = str(a.localIdentifier())
+            z["burst_id"] = str(a.burstIdentifier()) if a.burstIdentifier() else None
+            if z["burst_id"] and burst_index is None:
+                raise ValueError(
+                    "_make_serializable called for burst without burst_index argument"
+                )
+
+            z["pixel_width"] = int(a.pixelWidth())
+            z["pixel_height"] = int(a.pixelHeight())
+            media_type = a.mediaType()
+            if media_type == 1:
+                z["media_type"] = "image"
+            elif media_type == 2:  # probably?
+                z["media_type"] = "video"
+            elif media_type == 3:  # probably?
+                z["media_type"] = "audio"
+            d = a.creationDate()
+            z["creation_date"] = float(self._make_serializable(a.creationDate()))
+            z["modification_date"] = float(
+                self._make_serializable(a.modificationDate())
+            )
+            z["hidden"] = bool(a.hidden())
+            z["favorite"] = bool(a.favorite())
+            z["duration"] = float(a.duration())
+
+            def location_to_location_dict(CCLocation_struct):
+                # This is super cringe, but all attempts to just read the fields failed, and this
+                # is for burst photos only anyway, so it doesn't matter much.
+                """
+                print("location _get_objc_classname:", a.location()._get_objc_classname())
+                # print("\n".join(sorted(dir(a.location().coordinate))))
+                print("name:", a.location().coordinate.name)
+                print("obj:", a.location().coordinate.obj)
+                # z = ObjCInstance(a.location().coordinate.obj)
+                z = ObjCInstance(a.location().coordinate().longitude())
+                print(z)
+                print("coordinate:", a.location().coordinate.get("longitude"))
+                print("coordinate:", a.location.coordinate())
+                """
+                text = str(CCLocation_struct)
+                results = re.findall("<(.*),(.*)>", text)
+                return float(results[0][0]), float(results[0][1])
+
+            latitude, longitude = location_to_location_dict(a.location())
+
+            z["location"] = {
+                "longitude": longitude,
+                "latitude": latitude,
+                "altitude": None,
+                "timestamp": z["creation_date"],
+            }
+            base_filename = PhotoService._asset_filename(a)
+            start, ext = base_filename.split(".")
+            z["filename"] = start + "_{:0>2}".format(burst_index) + "." + ext
+            return z
+
+        if hasattr(a, "_get_objc_classname"):
+            raise ValueError(
+                "Unhandled objc entity passed, got: " + a._get_objc_classname()
+            )
+
         if isinstance(a, datetime.datetime):
             return time.mktime(a.timetuple())
 
@@ -337,16 +487,18 @@ def start():
 def test_image_data():
     p = PhotoService()
     entries = p.get_all_metadata()
+
     a_photo = [x for x in entries if x["media_type"] == "image"]
     desired = a_photo[-1]
     for z in a_photo:
-        if z["filename"].startswith("IMG_6474"):
+        if z["filename"].startswith("IMG_6514_03.JPG"):
+            # print(z)
             desired = z
-
-    a = p.p.get_asset_with_local_id(desired["local_id"])
-    print(desired)
-    print(a)
-    d = p._get_image_data(a)
+    print("desired:", desired)
+    a = p.retrieve_asset_by_local_id_or_burst(desired)
+    # print(desired)
+    # print(a)
+    # d = p._get_image_data(a)
     print("yes, all done")
 
     # Next, try to fetch the asset using its global id.
