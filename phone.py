@@ -31,19 +31,23 @@ class PhotoService:
         Retrieve all metadata of all images and videos.
         """
         all_assets = []
+        seen_ids = set()
         image_assets = self.p.get_assets(media_type="image")
         for image_asset in image_assets:
             serializable = self._make_serializable(image_asset)
             all_assets.append(serializable)
+            seen_ids.add(serializable["local_id"])
 
             if include_burst:
                 burst_photos_for_asset = self.retrieve_burst_assets_by_local_id(
                     image_asset.local_id
                 )
                 for bi, burst_photo in enumerate(burst_photos_for_asset):
-                    burst_serializable = self._make_serializable(
-                        burst_photo, burst_index=bi
-                    )
+                    burst_serializable = self._make_serializable(burst_photo)
+                    if burst_serializable["local_id"] in seen_ids:
+                        # Skip this, otherwise the burst photo that is representative occurs twice.
+                        continue
+                    seen_ids.add(burst_serializable["local_id"])
                     burst_serializable["location"] = serializable["location"]
                     all_assets.append(burst_serializable)
         for video in list(self.p.get_assets(media_type="video")):
@@ -258,7 +262,7 @@ class PhotoService:
 
         # That got us a list of PHAsset pointers.
         for bi, asset in enumerate(entries):
-            asset_dict = self._make_serializable(asset, burst_index=bi)
+            asset_dict = self._make_serializable(asset)
             if asset_dict["local_id"] == flat_asset["local_id"]:
                 # yay, this is the one we are interested in!
                 image_bytes = PhotoService._get_image_data(asset)
@@ -321,7 +325,7 @@ class PhotoService:
             res.append(burst_photo_as_phasset)
         return res
 
-    def _make_serializable(self, a, burst_index=None):
+    def _make_serializable(self, a):
         """
         This function can convert any photos' data type into a dictionary
         of usefulness.
@@ -391,10 +395,6 @@ class PhotoService:
             z = {}
             z["local_id"] = str(a.localIdentifier())
             z["burst_id"] = str(a.burstIdentifier()) if a.burstIdentifier() else None
-            if z["burst_id"] and burst_index is None:
-                raise ValueError(
-                    "_make_serializable called for burst without burst_index argument"
-                )
 
             z["pixel_width"] = int(a.pixelWidth())
             z["pixel_height"] = int(a.pixelHeight())
@@ -440,9 +440,7 @@ class PhotoService:
                 "altitude": None,
                 "timestamp": z["creation_date"],
             }
-            base_filename = PhotoService._asset_filename(a)
-            start, ext = base_filename.split(".")
-            z["filename"] = start + "_{:0>2}".format(burst_index) + "." + ext
+            z["filename"] = PhotoService._asset_filename(a)
             return z
 
         if hasattr(a, "_get_objc_classname"):
